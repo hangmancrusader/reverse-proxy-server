@@ -1,0 +1,8 @@
+# Common
+node_modules/
+dist/
+.env
+.env.local
+.vscode/
+.DS_Store
+logs/
