@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-
+import { Document, Types } from 'mongoose';
 export interface ILogEntry extends mongoose.Document {
   method: string;
   url: string;
@@ -8,6 +8,7 @@ export interface ILogEntry extends mongoose.Document {
   userAgent?: string;
   ip?: string;
   responseTimeMs?: number;
+  _id:Types.ObjectId; // Ensure _id is included in the interface
 }
 
 const logEntrySchema = new mongoose.Schema<ILogEntry>(

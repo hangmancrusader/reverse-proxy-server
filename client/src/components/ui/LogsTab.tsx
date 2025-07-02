@@ -1,37 +1,53 @@
-import { useEffect, useState } from "react"
-import axios from "axios"
+
+import { useEffect, useState } from 'react';
+import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
+import { DataTable } from "@/components/custom/DataTable";
+import { logColumns, type LogEntry } from "@/components/custom/LogTableColumns";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Terminal } from "lucide-react";
 
 const LogsTab = () => {
-  const [logs, setLogs] = useState([])
+    const { token } = useAuth();
+    const [logs, setLogs] = useState<LogEntry[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchLogs = async () => {
-      const res = await axios.get("http://localhost:5000/api/logs")
-      setLogs(res.data)
-    }
-    fetchLogs()
-  }, [])
+    useEffect(() => {
+        const fetchLogs = async () => {
+            if (!token) {
+                setError("Authentication token not found. Please log in.");
+                setIsLoading(false);
+                return;
+            }
+            try {
+                setIsLoading(true);
+                const data = await api.getLogs(token);
+                setLogs(data);
+            } catch (err: any) {
+                console.error("Failed to fetch logs:", err);
+                setError(err.message || "Failed to load logs. Please try again.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-  return (
-    <table className="w-full text-left border">
-      <thead>
-        <tr>
-          <th className="p-2 border">Method</th>
-          <th className="p-2 border">URL</th>
-          <th className="p-2 border">Time</th>
-        </tr>
-      </thead>
-      <tbody>
-        {logs.map((log: any) => (
-          <tr key={log._id}>
-            <td className="p-2 border">{log.method}</td>
-            <td className="p-2 border">{log.url}</td>
-            <td className="p-2 border">{new Date(log.timestamp).toLocaleString()}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
+        fetchLogs();
+    }, [token]);
 
-export default LogsTab
+    return (
+        <div className="space-y-4">
+            <h2 className="text-xl font-semibold mb-4">Proxy Logs</h2>
+            {error && (
+                <Alert variant="destructive">
+                    <Terminal className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                </Alert>
+            )}
+            <DataTable data={logs} columns={logColumns} isLoading={isLoading} emptyMessage="No logs found. Make some proxy requests!" />
+        </div>
+    );
+};
+
+export default LogsTab;

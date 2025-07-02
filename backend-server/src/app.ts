@@ -11,9 +11,10 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan("dev"));
 app.use("/api/auth", authRouter);
+app.use("/api/proxy/config", proxyConfigRoutes);
 app.use("/api/proxy", proxyRouter);
 app.use("/api/logs", logRoutes);
-app.use("/api/proxy/config", proxyConfigRoutes);
+
 app.get("/", (req, res) => {
   res.send("API is working");
 });

@@ -1,73 +1,109 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-import { Request, Response, NextFunction } from 'express';
-import axios from 'axios';
-import LogEntry from '../models/LogEntry';
+import { Request, Response } from "express";
+import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
+import LogEntry, { ILogEntry } from "../models/LogEntry";
+import { proxyConfig } from "../config/proxyConfig";
+
+const TARGET_BASE_URL = "https://jsonplaceholder.typicode.com";
 
 export const proxyHandler = async (
   req: Request,
-  res: Response,
-  next: NextFunction
+  res: Response
 ): Promise<void> => {
-  const fullPath = req.originalUrl.replace('/api/proxy', '');
- 
-  const targetURL = `https://jsonplaceholder.typicode.com/users`;
   const start = Date.now();
-    console.log(`Proxying request to: ${targetURL}`);
-    let log = null;
+  const logId = res.locals.logId; // Retrieve log ID from res.locals
+
+  // req.params.path will contain the wildcard segment, e.g., 'users/123'
+  const capturedPath = req.params.path || ""; 
+
+  // Construct the full target URL using the captured path
+  const targetURL = `${TARGET_BASE_URL}/${capturedPath}`;
+
+  console.log(`Proxying request to: ${targetURL}`);
 
   try {
-    // 1️⃣ Create log BEFORE proxying
-    log = await LogEntry.create({
-      method: req.method,
-      url: fullPath,
-      statusCode: 0, // placeholder
-      userAgent: req.headers['user-agent'],
-      ip: req.ip,
-      responseTimeMs: 0,
-      timestamp: new Date()
-    });
-    console.log('Log Entry Created:', log._id);
-    } catch (err) {console.error('Error creating log entry:', err);}
+    // Prepare headers to forward.
+    const headersToForward: Record<string, string | string[] | undefined> = {
+      ...req.headers
+    };
+    // Clean up headers that should not be forwarded
+    delete headersToForward.host; // The host header should reflect the target server
+    delete headersToForward.connection; // Node.js manages connections
+    delete headersToForward["content-length"]; // Axios will calculate this correctly
 
+    headersToForward["x-forwarded-for"] = req.ip || req.socket.remoteAddress;
 
-
-
-  try {
-    const response = await axios({
-      method: req.method as any, // (Optional) cast if TS complains
+    // Axios configuration for the outgoing request
+    const axiosConfig: AxiosRequestConfig = {
+      method: req.method as AxiosRequestConfig["method"],
       url: targetURL,
       data: req.body,
-      headers: req.headers,
-    });
+      headers: headersToForward,
+      validateStatus: (status) => true,
+      responseType: "arraybuffer"
+    };
+
+    const response: AxiosResponse = await axios(axiosConfig);
 
     const duration = Date.now() - start;
 
-    const logEntry = await LogEntry.create({
-      method: req.method,
-      url: req.path,
-      statusCode: response.status,
-      userAgent: req.headers['user-agent'],
-      ip: req.ip,
-      responseTimeMs: duration,
+    // Update the log entry if it was created
+    if (logId && proxyConfig.loggingEnabled) {
+      try {
+        await LogEntry.findByIdAndUpdate(logId, {
+          statusCode: response.status,
+          responseTimeMs: duration
+        });
+        console.log(`Log Entry Updated: ${logId}`);
+      } catch (updateErr) {
+        console.error(`Error updating log entry ${logId}:`, updateErr);
+      }
+    }
+
+    // Forward all headers from the target response back to the client
+    Object.keys(response.headers).forEach((key) => {
+      if (
+        key.toLowerCase() === "transfer-encoding" ||
+        key.toLowerCase() === "content-encoding"
+      ) {
+        return;
+      }
+      res.setHeader(key, response.headers[key]);
     });
-    console.log('Log Entry Created:', logEntry._id);
-    res.status(response.status).json(response.data);
+
+    // Set the status code from the target response
+    res.status(response.status);
+
+    // Send the response data back to the client.
+
+    res.send(response.data);
   } catch (error: any) {
-    console.error('Proxy Error:', error?.message);
-    res.status(502).json({ message: 'Proxy request failed' });
+    const duration = Date.now() - start;
+    console.error("Proxy Error:", error?.message);
+
+    // Determine the appropriate status code for the error response
+    const statusCode = error.response?.status || 502;
+    const errorMessage = error.response?.data || {
+      message: "Proxy request failed or target unreachable"
+    };
+
+    // Update log entry with error status if it exists
+    if (logId && proxyConfig.loggingEnabled) {
+      try {
+        await LogEntry.findByIdAndUpdate(logId, {
+          statusCode: statusCode,
+          responseTimeMs: duration,
+          errorMessage: error?.message // Add an error message field to your LogEntry model if desired
+        });
+        console.log(`Log Entry Updated with error status: ${logId}`);
+      } catch (updateErr) {
+        console.error(
+          `Error updating log entry with error status ${logId}:`,
+          updateErr
+        );
+      }
+    }
+
+    // Send an error response to the client
+    res.status(statusCode).json(errorMessage);
   }
 };
-//loging enabled logic 
-/*import { proxyConfig } from "../config/proxyConfig"
-
-// Inside your proxy route
-if (proxyConfig.loggingEnabled) {
-  // Save to DB (method, URL, timestamp)
-  const log = new Log({
-    method: req.method,
-    url: req.originalUrl,
-    timestamp: new Date(),
-  })
-  await log.save()
-}
-*/
