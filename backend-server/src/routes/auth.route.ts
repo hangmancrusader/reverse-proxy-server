@@ -2,10 +2,10 @@
 import express from 'express';
 import { login } from '../controllers/auth.controller';
 import bcrypt from 'bcryptjs';
-import User from '../models/User'; // Adjust the import path as necessary
+import User from '../models/User';
 const router = express.Router();
 
-router.post('/login', login); // ✅ This is fine
+router.post('/login', login); 
 router.post('/register', async (req, res) => {
   const { email, password } = req.body;
   const hash = await bcrypt.hash(password, 10);

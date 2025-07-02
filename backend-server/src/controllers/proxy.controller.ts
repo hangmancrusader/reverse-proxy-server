@@ -8,7 +8,7 @@ export const proxyHandler = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-const fullPath = req.originalUrl.replace('/api/proxy', '');
+  const fullPath = req.originalUrl.replace('/api/proxy', '');
  
   const targetURL = `https://jsonplaceholder.typicode.com/users`;
   const start = Date.now();
@@ -57,3 +57,17 @@ const fullPath = req.originalUrl.replace('/api/proxy', '');
     res.status(502).json({ message: 'Proxy request failed' });
   }
 };
+//loging enabled logic 
+/*import { proxyConfig } from "../config/proxyConfig"
+
+// Inside your proxy route
+if (proxyConfig.loggingEnabled) {
+  // Save to DB (method, URL, timestamp)
+  const log = new Log({
+    method: req.method,
+    url: req.originalUrl,
+    timestamp: new Date(),
+  })
+  await log.save()
+}
+*/
